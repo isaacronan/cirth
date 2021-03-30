@@ -13,27 +13,26 @@ r = redis.Redis(**redisargs)
 
 def cleanup():
     _maxbatches = r.get('batches:param:maxbatches')
-    maxbatches = int(_maxbatches) if _maxbatches else 1
-    if r.zcard('batches:current') > maxbatches:
-        pipe = r.pipeline()
+    maxbatches = int(_maxbatches) if _maxbatches != None else 1
+    expiredbatches = list(r.zrange('batches:current', maxbatches, -1))
 
-        wordsetspipe = r.pipeline()
-        expiredbatches = list(r.zrange('batches:current', maxbatches, -1))
-        for batch in [b.decode('utf-8') for b in expiredbatches]:
-            wordsetspipe.smembers('words:{0}'.format(batch))
-        wordsets = wordsetspipe.execute()
+    wordsetspipe = r.pipeline()
+    for batch in [b.decode('utf-8') for b in expiredbatches]:
+        wordsetspipe.smembers('words:{0}'.format(batch))
+    wordsets = wordsetspipe.execute()
 
-        for batch, wordset in zip([b.decode('utf-8') for b in expiredbatches], wordsets):
-            words = list(wordset)
-            for word in [b.decode('utf-8') for b in words]:
-                wordid = 'words:{0}:word:{1}'.format(batch, word)
-                pipe.delete(wordid)
-                pipe.srem('words:all:{0}'.format(word), wordid)
-        for batch in [b.decode('utf-8') for b in expiredbatches]:
-            pipe.delete('words:{0}'.format(batch))
-            pipe.delete('words:{0}:seeds'.format(batch))
-            pipe.zrem('batches:current', batch)
-        pipe.execute()
+    cleanuppipe = r.pipeline()
+    for batch, wordset in zip([b.decode('utf-8') for b in expiredbatches], wordsets):
+        words = list(wordset)
+        for word in [b.decode('utf-8') for b in words]:
+            wordid = 'words:{0}:word:{1}'.format(batch, word)
+            cleanuppipe.delete(wordid)
+            cleanuppipe.srem('words:all:{0}'.format(word), wordid)
+    for batch in [b.decode('utf-8') for b in expiredbatches]:
+        cleanuppipe.delete('words:{0}'.format(batch))
+        cleanuppipe.delete('words:{0}:seeds'.format(batch))
+        cleanuppipe.zrem('batches:current', batch)
+    cleanuppipe.execute()
 
 def addtomarkovchain(timestamp=0, phrase=[]):
     pipe = r.pipeline()
@@ -50,8 +49,12 @@ def addtomarkovchain(timestamp=0, phrase=[]):
         pipe.sadd('words:all:{0}'.format(key), wordid)
     pipe.zadd('batches:current', { str(timestamp): -1 * trunc(time.time() * 1000) })
     pipe.execute()
-    cleanup()
 
 while True:
-    phrase = json.loads(r.brpop('batches:pending')[1])
-    addtomarkovchain(**phrase)
+    cleanup()
+    phrasejson = r.brpop('batches:pending')[1]
+    try:
+        phrase = json.loads(phrasejson)
+        addtomarkovchain(**phrase)
+    except ValueError:
+        pass
