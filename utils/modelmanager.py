@@ -48,7 +48,7 @@ class ModelManager:
 
     def startpolling(self):
         while True:
-            phrasejson = self.client.brpop('batches:pending')[1]
+            phrasejson = self.client.brpop('batches:training')[1]
             try:
                 phrase = json.loads(phrasejson)
                 self.addtomodel(**phrase)
