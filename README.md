@@ -2,6 +2,8 @@
 
 Python utility for constructing a Markov chain from real-time text data. Continuously generates random phrases. Runs on Redis.
 
+See a demonstration [here](https://ishero.dev/fakenews).
+
 ## Running
 
 A Redis server must be running.
